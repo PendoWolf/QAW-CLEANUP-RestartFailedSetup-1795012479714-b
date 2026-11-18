@@ -1,6 +1,7 @@
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
-import { requireAuth } from "./auth/require-auth.js";
+import * as pendo from "pendo-server-sdk";
+import { type AuthLocals, requireAuth } from "./auth/require-auth.js";
 import { accountsRouter } from "./routes/accounts.js";
 import { assistantRouter } from "./routes/assistant.js";
 import { authRouter } from "./routes/auth.js";
@@ -22,7 +23,22 @@ export function createApp(corsOrigin: string) {
   app.use("/api/trips", requireAuth, tripsRouter);
   app.use("/api/users", requireAuth, usersRouter);
   app.use("/api/accounts", requireAuth, accountsRouter);
-  app.use("/api/assistant", requireAuth, assistantRouter);
+  app.use(
+    "/api/assistant",
+    requireAuth,
+    // Names the Pendo visitor, account and conversation of each assistant turn. requireAuth has already put the
+    // signed-in user and account on res.locals.
+    pendo.middleware((req: Request) => {
+      const { user, account } = (req.res?.locals ?? {}) as Partial<AuthLocals>;
+      const conversationId: unknown = req.body?.conversationId;
+      return {
+        visitorId: user?.id, // TODO: map to the visitor id your Pendo web snippet uses
+        accountId: account?.id, // TODO: map to the Pendo account id
+        conversationId: typeof conversationId === "string" && conversationId.trim() ? conversationId : undefined,
+      };
+    }),
+    assistantRouter,
+  );
 
   app.use((_req, res) => {
     res.status(404).json({ error: "not found" });
